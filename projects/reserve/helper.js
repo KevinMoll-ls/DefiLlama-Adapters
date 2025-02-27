@@ -110,8 +110,27 @@ const _getLogs = async (api, config) => {
   return resLog;
 };
 
+const _getIndexLogs = async (api, config) => {
+    const resLog = (
+      await Promise.all(
+        config.index.folioDeployer.map((deployerAddress) => 
+          getLogs({
+            api,
+            target: deployerAddress,
+            topic: "FolioDeployed(address,address,address)",
+            fromBlock: 21845736,
+            eventAbi: "event FolioDeployed(address indexed folioOwner, address indexed folio, address folioAdmin)",
+            onlyArgs: true,
+          })
+        )
+      )
+    ).flat();
+    return resLog;
+  };
+
 module.exports = {
   getStargateLpValues,
   getCompoundUsdcValues,
   _getLogs,
+  _getIndexLogs
 };

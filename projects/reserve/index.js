@@ -1,11 +1,13 @@
 const ADDRESSES = require("../helper/coreAssets.json");
 const {
   sumTokens2,
+  sumTokensExport,
 } = require("../helper/unwrapLPs.js");
 const {
   getStargateLpValues,
   getCompoundUsdcValues,
   _getLogs,
+  _getIndexLogs,
 } = require("./helper");
 
 const chainConfigs = {
@@ -18,6 +20,9 @@ const chainConfigs = {
       "0x43587CAA7dE69C3c2aD0fb73D4C9da67A8E35b0b",
       "0x2204ec97d31e2c9ee62ead9e6e2d5f7712d3f1bf"
     ],
+    index: {
+        folioDeployer: ["0x4C64ef51cB057867e40114DcFA3702c2955d3644"]
+    },
     rsr: "0x320623b8E4fF03373931769A31Fc52A4E78B5d70",
     vault: "0xaedcfcdd80573c2a312d15d6bb9d921a01e4fb0f",
     fromBlock: 16680995,
@@ -28,8 +33,11 @@ const chainConfigs = {
     deployerAddresses: [
       "0xf1B06c2305445E34CF0147466352249724c2EAC1",
       "0x9C75314AFD011F22648ca9C655b61674e27bA4AC",
-      "0xfd18ba9b2f9241ce40cde14079c1cda1502a8d0a",
+      "0xfd18ba9b2f9241ce40cde14079c1cda1502a8d0a"
     ],
+    index: {
+        folioDeployer: ["0xE926577a152fFD5f5036f88BF7E8E8D3652B558C"]
+    },
     rsr: "0xab36452dbac151be02b16ca17d8919826072f64a",
     fromBlock: 5000000,
     subgraph_url: "https://subgraph.satsuma-prod.com/327d6f1d3de6/reserve/reserve-base/api",
@@ -65,10 +73,15 @@ async function tvl(api) {
     : [];
   const blacklistedTokens = [config.rsr];
   const fluxListWithOwner = [];
-  const creationLogs = await _getLogs(api, config);
 
+  // Logs
+  const creationLogs = await _getLogs(api, config);
+  const creationIndexLogs = config.index ? await _getIndexLogs(api, config) : [];
+
+  // Tokens
   const mains = creationLogs.map((i) => i.main);
   const rTokens = creationLogs.map((i) => i.rToken);
+  const indexes = creationIndexLogs.map((i) => i.folio);
 
   const backingManagers = await api.multiCall({
     abi: "address:backingManager",
@@ -85,19 +98,22 @@ async function tvl(api) {
 
   let processedWrappers = new Set();
   let wrapperBalances = {};
+
   const allTokens = basketRes.flatMap(([tokens], i) => {
     ownerTokens.push([tokens, rTokens[i]]);
     ownerTokens.push([tokens, backingManagers[i]]);
     return tokens;
   });
+
   const allRTokens = basketRes.flatMap(([tokens], i) =>
     tokens.map(() => rTokens[i])
   );
   const allManagers = basketRes.flatMap(([tokens], i) =>
     tokens.map(() => backingManagers[i])
   );
-  const allNames = await api.multiCall({ abi: "string:name", calls: allTokens, });
 
+  const allNames = await api.multiCall({ abi: "string:name", calls: allTokens, });
+  const allIndexesNames = await api.multiCall({ abi: "string:name", calls: indexes, });
 
   const aTokenWrappersV2 = allTokens.filter((_, i) => allNames[i].startsWith("Static Aave") && allNames[i].includes("interest"));
   const aTokenWrappersV3 = allTokens.filter((_, i) => allNames[i].startsWith("Static Aave") && !allNames[i].includes("interest"));
@@ -165,7 +181,6 @@ async function tvl(api) {
 
   await genericUnwrapCvxDeposit(api, convexTokensAndOwners)
   await unwrapCreamTokens(api, fluxListWithOwner);
-
   await sumTokens2({ api, ownerTokens, blacklistedTokens });
 }
 
